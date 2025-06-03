@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['Sweep.pyw'],
+    ['Sweep.py'],
     pathex=[],
     binaries=[],
     datas=[('requirements.txt', '.')],

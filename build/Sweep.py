@@ -781,21 +781,10 @@ class DesktopPet(CTkAppWithDnD):
     def _run_tray_icon(self):
         image = self._create_tray_image()
         menu = pystray.Menu(
-            pystray.MenuItem('Clear Config', self._on_tray_clear_config),
             pystray.MenuItem('Quit', self._on_tray_quit)
         )
         self.tray_icon = pystray.Icon("Sweep", image, "Sweep", menu)
         self.tray_icon.run()
-
-    def _on_tray_clear_config(self, icon, item):
-        # Remove config file and notify user
-        try:
-            if os.path.exists(CONFIG_FILE):
-                os.remove(CONFIG_FILE)
-            # Show a message box on the main thread
-            self.after(0, lambda: messagebox.showinfo("Config Cleared", "Network share configuration cleared.\nRestart Sweep to set up again."))
-        except Exception as e:
-            self.after(0, lambda: messagebox.showerror("Error", f"Failed to clear config: {e}"))
 
     def _on_tray_quit(self, icon, item):
         # Called from tray thread, must stop icon and quit app
