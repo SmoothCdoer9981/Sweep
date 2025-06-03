@@ -189,7 +189,8 @@ CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
 CHUNK_SIZE = 65536  
 
 APP_VERSION = "0.2"
-GITHUB_VERSION_URL = "https://raw.githubusercontent.com/SmoothCdoer9981/Sweep/refs/heads/main/version.txt"
+# Use the raw URL for the main branch (not refs/heads)
+GITHUB_VERSION_URL = "https://raw.githubusercontent.com/SmoothCdoer9981/Sweep/main/version.txt"
 
 def load_network_share_path():
     if os.path.exists(CONFIG_FILE):
@@ -360,7 +361,7 @@ class DesktopPet(CTkAppWithDnD):
         # Network share setup
         self.network_share_path = ensure_network_share_path()
 
-        # Check for updates
+        # Schedule update check after window is ready (use a short delay, e.g. 1000ms)
         self.after(1000, check_for_update)
 
     def _start_tray_thread(self):
