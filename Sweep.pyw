@@ -9,6 +9,7 @@ import platform
 import datetime # For TimeSpan conversion
 import json
 from tkinter import filedialog, messagebox
+import requests
 
 # Add pystray and PIL imports
 try:
@@ -98,15 +99,15 @@ eating_frames = [
     """, 
     r"""
  /\_/\  
-(  O  ) 
- > ^ <  
+( 'O' ) 
+ >   <  
 /  ~  \ 
 ( === )
     """, 
     r"""
  /\_/\  
 ( 'o' ) 
- > ^ <  
+ >   <  
 /  ~  \ 
 ( === )
     """, 
@@ -187,6 +188,9 @@ ascii_progress_bar_states = [
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
 CHUNK_SIZE = 65536  
 
+APP_VERSION = "0.2"
+GITHUB_VERSION_URL = "https://raw.githubusercontent.com/SmoothCdoer9981/Sweep/main/version.txt"
+
 def load_network_share_path():
     if os.path.exists(CONFIG_FILE):
         try:
@@ -221,6 +225,16 @@ def ensure_network_share_path():
             save_network_share_path(path)
             break
     return path
+
+def check_for_update():
+    try:
+        resp = requests.get(GITHUB_VERSION_URL, timeout=5)
+        if resp.status_code == 200:
+            latest = resp.text.strip()
+            if latest != APP_VERSION:
+                messagebox.showinfo("Update Available", f"A new version ({latest}) is available on GitHub!")
+    except Exception as e:
+        print(f"Update check failed: {e}")
 
 class CTkAppWithDnD(TkinterDnD.DnDWrapper, ctk.CTk):
     def __init__(self, *args, **kwargs):
@@ -345,6 +359,9 @@ class DesktopPet(CTkAppWithDnD):
 
         # Network share setup
         self.network_share_path = ensure_network_share_path()
+
+        # Check for updates
+        self.after(1000, check_for_update)
 
     def _start_tray_thread(self):
         # Start the tray icon in a separate thread after the Tk window is initialized
