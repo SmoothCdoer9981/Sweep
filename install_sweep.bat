@@ -24,13 +24,14 @@ REM Upgrade pip
 python -m pip install --upgrade pip
 
 REM Install dependencies
-if exist requirements.txt (
-    python -m pip install -r requirements.txt
-) else (
-    echo requirements.txt not found!
-    pause
-    exit /b 1
-)
+    pip install customtkinter
+    pip install tkinterdnd2
+    pip install Pillow
+    pip install requests
+    pip install winrt-Windows.Media.Control
+    pip install pystray 
+    pip install winrt.windows.foundation
+
 
 echo.
 echo Installation complete! You can now run Sweep.pyw by double-clicking it or with:
