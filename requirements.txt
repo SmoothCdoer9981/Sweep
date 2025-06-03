@@ -1,5 +1,0 @@
-customtkinter
-tkinterdnd2
-pystray
-Pillow
-winrt
