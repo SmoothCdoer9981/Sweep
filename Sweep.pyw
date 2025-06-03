@@ -189,7 +189,7 @@ CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
 CHUNK_SIZE = 65536  
 
 APP_VERSION = "0.2"
-GITHUB_VERSION_URL = "https://raw.githubusercontent.com/SmoothCdoer9981/Sweep/main/version.txt"
+GITHUB_VERSION_URL = "https://raw.githubusercontent.com/SmoothCdoer9981/Sweep/refs/heads/main/version.txt"
 
 def load_network_share_path():
     if os.path.exists(CONFIG_FILE):
