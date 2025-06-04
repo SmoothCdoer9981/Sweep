@@ -10,6 +10,7 @@ import datetime # For TimeSpan conversion
 import json
 from tkinter import filedialog, messagebox
 import requests
+import webbrowser # Import webbrowser for opening search URLs
 
 # Add pystray and PIL imports
 try:
@@ -188,44 +189,22 @@ ascii_progress_bar_states = [
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
 CHUNK_SIZE = 65536  
 
-APP_VERSION = "0.2"
+APP_VERSION = "0.3"
 # Use the raw URL for the main branch (not refs/heads)
 GITHUB_VERSION_URL = "https://raw.githubusercontent.com/SmoothCdoer9981/Sweep/main/version.txt"
 
-def load_network_share_path():
+def load_config():
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, "r") as f:
-                data = json.load(f)
-                return data.get("network_share_path", "")
+                return json.load(f)
         except Exception:
-            return ""
-    return ""
+            return {}
+    return {}
 
-def save_network_share_path(path):
+def save_config(config_data):
     with open(CONFIG_FILE, "w") as f:
-        json.dump({"network_share_path": path}, f)
-
-def prompt_for_network_share():
-    root = ctk.CTk()
-    root.withdraw()
-    messagebox.showinfo("Setup", "Please select your network share folder for Sweep to use.")
-    path = filedialog.askdirectory(title="Select Network Share Folder")
-    root.destroy()
-    return path
-
-def ensure_network_share_path():
-    path = load_network_share_path()
-    while not path or not os.path.exists(path):
-        path = prompt_for_network_share()
-        if not path:
-            messagebox.showerror("Error", "You must select a network share folder to continue.")
-        elif not os.path.exists(path):
-            messagebox.showerror("Error", f"Selected path does not exist:\n{path}")
-        else:
-            save_network_share_path(path)
-            break
-    return path
+        json.dump(config_data, f, indent=4)
 
 def check_for_update():
     try:
@@ -242,24 +221,132 @@ class CTkAppWithDnD(TkinterDnD.DnDWrapper, ctk.CTk):
         super().__init__(*args, **kwargs)
         self.TkDnDVersion = TkinterDnD._require(self)
 
+
+class SettingsWindow(ctk.CTkToplevel): 
+    def __init__(self, master, app_instance):
+        super().__init__(master)
+        self.title("Sweep Settings")
+        self.geometry("400x600") # Adjusted height for new search engine option
+        self.transient(master) # Make it appear on top of the main window
+        self.grab_set() # Make it modal
+        self.resizable(False, False) # Prevent resizing
+        
+        self.app = app_instance
+        self.config = self.app.config.copy() # Work with a copy of the config
+
+        self.create_widgets()
+
+    def create_widgets(self):
+        # Create a main frame to contain all widgets for consistent padding/layout
+        main_frame = ctk.CTkFrame(self, fg_color="transparent") # This frame itself can be transparent
+        main_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+
+        # --- ASCII Header ---
+        ctk.CTkLabel(main_frame, text="""
+==============================
+      S W E E P  S E T T I N G S
+==============================
+""", font=("Consolas", 14), justify="center").pack(pady=(0, 10)) # Adjusted pady
+
+        # --- Destination Path Setting ---
+        ctk.CTkLabel(main_frame, text="Network Share Path:", font=("Consolas", 12)).pack(pady=(5,0))
+        self.path_entry = ctk.CTkEntry(main_frame, width=300, font=("Consolas", 12))
+        self.path_entry.insert(0, self.config.get("network_share_path", ""))
+        self.path_entry.pack(pady=2)
+        ctk.CTkButton(main_frame, text="Browse", command=self.browse_path, font=("Consolas", 12)).pack(pady=2)
+
+        ctk.CTkLabel(main_frame, text="------------------------------", font=("Consolas", 10)).pack(pady=10) # Separator
+        
+        # --- Search Engine Setting ---
+        ctk.CTkLabel(main_frame, text="Default Search Engine:", font=("Consolas", 12)).pack(pady=(5,0))
+        self.search_engine_options = ["Google", "Bing", "DuckDuckGo"] 
+        self.search_engine_combobox = ctk.CTkComboBox(main_frame, values=self.search_engine_options, font=("Consolas", 12))
+        current_search_engine = self.config.get("search_engine", "Google")
+        if current_search_engine in self.search_engine_options:
+            self.search_engine_combobox.set(current_search_engine)
+        else:
+            self.search_engine_combobox.set("Google") # Default if current is not in options
+        self.search_engine_combobox.pack(pady=2)
+
+        ctk.CTkLabel(main_frame, text="------------------------------", font=("Consolas", 10)).pack(pady=10) # Separator
+
+        # --- Always on Top Setting ---
+        self.always_on_top_var = ctk.BooleanVar(value=self.config.get("always_on_top", True))
+        ctk.CTkCheckBox(main_frame, text="Always on Top", variable=self.always_on_top_var, font=("Consolas", 12)).pack(pady=5)
+
+        ctk.CTkLabel(main_frame, text="==============================", font=("Consolas", 14)).pack(pady=10) # Separator
+
+        # --- Save, Apply and Cancel Buttons ---
+        button_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        button_frame.pack(pady=10)
+
+        ctk.CTkButton(button_frame, text="Save", command=self.save_and_close, font=("Consolas", 12)).pack(side="left", padx=5)
+        ctk.CTkButton(button_frame, text="Apply", command=self.apply_settings, font=("Consolas", 12)).pack(side="left", padx=5)
+        ctk.CTkButton(button_frame, text="Cancel", command=self.destroy, font=("Consolas", 12)).pack(side="right", padx=5)
+
+    def browse_path(self):
+        path = filedialog.askdirectory(title="Select Network Share Folder")
+        if path:
+            self.path_entry.delete(0, ctk.END)
+            self.path_entry.insert(0, path)
+
+    def apply_settings(self):
+        self.config["network_share_path"] = self.path_entry.get()
+        self.config["search_engine"] = self.search_engine_combobox.get() # Save search engine setting
+        self.config["always_on_top"] = self.always_on_top_var.get()
+
+        # Update the main app's config (but don't save to file yet)
+        self.app.config.update(self.config)
+        
+        # Apply always on top immediately
+        self.app.wm_attributes("-topmost", self.app.config["always_on_top"])
+
+        messagebox.showinfo("Settings Applied", "Settings have been applied!")
+
+    def save_and_close(self):
+        self.apply_settings() # First apply the settings
+        save_config(self.app.config) # Then save to file
+        messagebox.showinfo("Settings Saved", "Settings have been saved successfully! Some changes may require a restart.")
+        self.destroy() # Close the settings window
+
+
 class DesktopPet(CTkAppWithDnD):
     def __init__(self):
         super().__init__()
 
+        self.config = load_config() # Load all config at startup
+
+        # Apply initial settings from config
+        ctk.set_appearance_mode("dark") # This is usually set once globally
+        self.wm_attributes("-topmost", self.config.get("always_on_top", True)) # Default to True
+
         self.overrideredirect(True)
-        self.wm_attributes("-topmost", True)
-        self.geometry("150x270+100+100") 
-        self.configure(bg="black")
+        self.geometry("150x330+100+100") # Adjusted height for new search bar
+        self.configure(bg="transparent") 
+
+        # --- Top Bar Frame ---
+        self.top_bar_frame = ctk.CTkFrame(self, fg_color="transparent") # Use transparent to respect theme
+        self.top_bar_frame.pack(fill="x", pady=(5,0))
 
         self.title_label = ctk.CTkLabel(
-            self,
+            self.top_bar_frame,
             text="Sweep",
             font=("Consolas", 20, "bold"),
-            text_color="white",
-            fg_color="black",
             height=30
         )
-        self.title_label.pack(fill="x", pady=(5,0))
+        self.title_label.pack(side="left", padx=(5,0))
+
+        self.settings_button = ctk.CTkButton(
+            self.top_bar_frame,
+            text="⚙️",
+            font=("Consolas", 14),
+            width=30,
+            height=30,
+            command=self._on_tray_settings
+        )
+        self.settings_button.pack(side="right", padx=(0,5))
+
 
         self.frame_index = 0
         self.is_eating = False
@@ -291,56 +378,79 @@ class DesktopPet(CTkAppWithDnD):
             self,
             text=self.current_frames[0],
             font=("Consolas", 16),
-            text_color="white",
-            fg_color="black",
             justify="left"
         )
         self.label.pack(padx=5, pady=5, fill="both", expand=True)
         
         # --- Music Control and Info Frame ---
-        self.music_control_frame = ctk.CTkFrame(self, fg_color="black")
+        self.music_control_frame = ctk.CTkFrame(self, fg_color="transparent") 
         
         # Song Title Label (for scrolling text)
         self.track_title_label = ctk.CTkLabel(
             self.music_control_frame,
             text="",
             font=("Consolas", 12),
-            text_color="white",
-            fg_color="black",
+            fg_color="transparent", 
             justify="center",
-            width=self.max_song_display_width * 8 # Approximate width based on font
+            width=self.max_song_display_width * 8 
         )
-        self.track_title_label.pack(pady=(2,5), fill="x") # Adjusted pady since progress bar is gone
-
-        # Removed Song Progress Bar Label and its packing
+        self.track_title_label.pack(pady=(2,5), fill="x") 
 
         # Multimedia Control Buttons
-        self.prev_button = ctk.CTkButton(self.music_control_frame, text="⏮️", command=self.skip_prev, width=40, height=25, fg_color="black", hover_color="gray", text_color="white", font=("Consolas", 14))
+        self.prev_button = ctk.CTkButton(self.music_control_frame, text="⏮️", command=self.skip_prev, width=40, height=25, fg_color="transparent", hover_color="gray", 
+font=("Consolas", 14))
         self.prev_button.pack(side="left", padx=5, expand=True) 
 
-        self.play_pause_button = ctk.CTkButton(self.music_control_frame, text="▶️", command=self.toggle_play_pause, width=40, height=25, fg_color="black", hover_color="gray", text_color="white", font=("Consolas", 14))
+        self.play_pause_button = ctk.CTkButton(self.music_control_frame, text="▶️", command=self.toggle_play_pause, width=40, height=25, fg_color="transparent", hover_color="gray", 
+font=("Consolas", 14))
         self.play_pause_button.pack(side="left", padx=5, expand=True)
 
-        self.skip_button = ctk.CTkButton(self.music_control_frame, text="⏭️", command=self.skip_next, width=40, height=25, fg_color="black", hover_color="gray", text_color="white", font=("Consolas", 14))
+        self.skip_button = ctk.CTkButton(self.music_control_frame, text="⏭️", command=self.skip_next, width=40, height=25, fg_color="transparent", hover_color="gray", 
+font=("Consolas", 14))
         self.skip_button.pack(side="left", padx=5, expand=True)
 
         self.music_control_frame.pack_forget() # Initially hidden
 
+        # --- Search Bar and Button ---
+        self.search_frame = ctk.CTkFrame(self, fg_color="transparent")
+        
+        self.search_entry = ctk.CTkEntry(
+            self.search_frame,
+            placeholder_text="Search...",
+            width=120,
+            font=("Consolas", 12)
+        )
+        self.search_entry.pack(side="left", padx=(5,2), pady=5, fill="x", expand=True)
+        
+        self.search_button = ctk.CTkButton(
+            self.search_frame,
+            text="🔎",
+            command=self.perform_search,
+            width=30,
+            height=25,
+            font=("Consolas", 14)
+        )
+        self.search_button.pack(side="right", padx=(2,5), pady=5)
+        
+        # self.search_frame.pack(fill="x") # Always visible - REMOVE OR COMMENT OUT THIS LINE
+        self.search_frame.pack_forget() # Initially hidden
+
         # Main window bindings
-        self.bind("<ButtonPress-1>", self.start_move)
-        self.bind("<B1-Motion>", self.do_move)
-        self.label.bind("<ButtonPress-1>", self.start_move)
-        self.label.bind("<B1-Motion>", self.do_move)
+        # Bind the top bar frame for dragging
+        self.top_bar_frame.bind("<ButtonPress-1>", self.start_move)
+        self.top_bar_frame.bind("<B1-Motion>", self.do_move)
         self.title_label.bind("<ButtonPress-1>", self.start_move)
         self.title_label.bind("<B1-Motion>", self.do_move)
+        self.settings_button.bind("<ButtonPress-1>", lambda e: "break") # Prevent dragging when clicking settings button
 
         self.label.drop_target_register(DND_FILES)
         self.label.dnd_bind('<<Drop>>', self.handle_drop)
         self.label.dnd_bind('<<DropEnter>>', self.on_file_enter)
         self.label.dnd_bind('<<DropLeave>>', self.on_file_leave)
 
-        # Removed the "Toggle Music Mode" button
-
+        # NEW: Bind double-click to toggle search bar
+        self.label.bind("<Double-Button-1>", self._toggle_search_bar)
+        
         # Start animation thread
         self.animate_thread = threading.Thread(target=self.animate, daemon=True)
         self.animate_thread.start()
@@ -358,8 +468,8 @@ class DesktopPet(CTkAppWithDnD):
             # Ensure the tray icon is started after the mainloop has begun
             self.after(0, self._start_tray_thread)
 
-        # Network share setup
-        self.network_share_path = ensure_network_share_path()
+        # Network share setup - now uses self.config
+        self.network_share_path = self.ensure_network_share_path()
 
         # Schedule update check after window is ready (use a short delay, e.g. 1000ms)
         self.after(1000, check_for_update)
@@ -368,6 +478,13 @@ class DesktopPet(CTkAppWithDnD):
         # Start the tray icon in a separate thread after the Tk window is initialized
         self.tray_thread = threading.Thread(target=self._run_tray_icon, daemon=True)
         self.tray_thread.start()
+
+    def _toggle_search_bar(self, event=None):
+        """Toggles the visibility of the search bar."""
+        if self.search_frame.winfo_ismapped():  # Check if it's currently visible
+            self.search_frame.pack_forget()
+        else:
+            self.search_frame.pack(fill="x")
 
 
     # Helper function to update the pet's ASCII art display
@@ -384,9 +501,6 @@ class DesktopPet(CTkAppWithDnD):
             full_text = pet_frame
 
         self.label.configure(text=full_text)
-
-        # Visibility of music_control_frame and its internal labels/buttons
-        # is now handled directly in the animate loop's state transitions.
 
     # Helper for scrolling text
     def _get_scrolling_text(self, text):
@@ -538,6 +652,25 @@ class DesktopPet(CTkAppWithDnD):
                 self.is_music_playing_override = True 
                 self.is_music_playing_system = True # Keep consistent with override
 
+    def perform_search(self):
+        query = self.search_entry.get().strip()
+        if not query:
+            return # Don't search if query is empty
+
+        search_engine = self.config.get("search_engine", "Google")
+        
+        search_urls = {
+            "Google": "https://www.google.com/search?q=",
+            "Bing": "https://www.bing.com/search?q=",
+            "DuckDuckGo": "https://duckduckgo.com/?q="
+        }
+        
+        base_url = search_urls.get(search_engine, search_urls["Google"]) # Default to Google
+        full_url = f"{base_url}{requests.utils.quote(query)}"
+        
+        print(f"Opening search: {full_url}")
+        webbrowser.open_new_tab(full_url)
+        self.search_entry.delete(0, ctk.END) # Clear the search entry after performing search
 
     def animate(self):
         current_animation_state = "idle" 
@@ -723,11 +856,17 @@ class DesktopPet(CTkAppWithDnD):
         try:
             file_path = file_path.strip().strip('"')
 
+            dest_folder = self.config.get("network_share_path", "") # Get path from current config
+            if not dest_folder:
+                self.after(0, lambda: self.update_pet_display(idle_frames[0], "No Share Set! 🚫\nUse Settings!"))
+                self.after(3000, lambda: self.after(0, lambda: setattr(self, 'eating_message_display_time', 0)))
+                return
+
             if os.path.isfile(file_path):
-                dest_path = os.path.join(self.network_share_path, os.path.basename(file_path))
+                dest_path = os.path.join(dest_folder, os.path.basename(file_path))
                 
-                if not os.path.exists(self.network_share_path):
-                    print(f"Error: Network share path does not exist or is inaccessible: {self.network_share_path}")
+                if not os.path.exists(dest_folder):
+                    print(f"Error: Network share path does not exist or is inaccessible: {dest_folder}")
                     self.after(0, lambda: self.update_pet_display(idle_frames[0], "Share Missing! 🚫"))
                     self.after(2000, lambda: self.after(0, lambda: setattr(self, 'eating_message_display_time', 0))) 
                     return
@@ -795,17 +934,27 @@ class DesktopPet(CTkAppWithDnD):
     def _run_tray_icon(self):
         image = self._create_tray_image()
         menu = pystray.Menu(
+            pystray.MenuItem('Settings', self._on_tray_settings), # Re-use the existing handler
             pystray.MenuItem('Clear Config', self._on_tray_clear_config),
             pystray.MenuItem('Quit', self._on_tray_quit)
         )
         self.tray_icon = pystray.Icon("Sweep", image, "Sweep", menu)
         self.tray_icon.run()
 
+    def _on_tray_settings(self, icon=None, item=None): # icon and item are passed by pystray, but not by button click
+        # Open settings window
+        # Check if settings window already exists and is open
+        if not hasattr(self, 'settings_window') or not self.settings_window.winfo_exists():
+            self.settings_window = SettingsWindow(self, self)
+            self.settings_window.focus_set() # Bring to front if already open
+
     def _on_tray_clear_config(self, icon, item):
         # Remove config file and notify user
         try:
             if os.path.exists(CONFIG_FILE):
                 os.remove(CONFIG_FILE)
+            # Reset config in app memory
+            self.config = {}
             # Show a message box on the main thread
             self.after(0, lambda: messagebox.showinfo("Config Cleared", "Network share configuration cleared.\nRestart Sweep to set up again."))
         except Exception as e:
@@ -823,9 +972,31 @@ class DesktopPet(CTkAppWithDnD):
             self.tray_icon.stop()
         self.destroy()
 
+    def ensure_network_share_path(self):
+        path = self.config.get("network_share_path", "")
+        while not path or not os.path.exists(path):
+            self.withdraw() # Hide main window while prompting
+            path = filedialog.askdirectory(title="Select Network Share Folder for Sweep") # Directly ask here
+            
+            if not path:
+                # If user cancels, offer to quit
+                if messagebox.askyesno("Setup Cancelled", "No network share folder selected. Do you want to quit Sweep?", icon='question'):
+                    self.after(0, self.quit)
+                    return "" # Return empty path to signal cancellation
+                else:
+                    # User chose not to quit, re-loop to ask for path again
+                    continue 
+            elif not os.path.exists(path):
+                messagebox.showerror("Error", f"Selected path does not exist:\n{path}")
+            else:
+                self.config["network_share_path"] = path
+                save_config(self.config)
+                break
+        self.deiconify() # Show main window again once path is set
+        return path
+
 
 if __name__ == "__main__":
-    ctk.set_appearance_mode("dark")
-    ctk.set_default_color_theme("dark-blue")
+    ctk.set_appearance_mode("dark") 
     app = DesktopPet()
     app.mainloop()
